@@ -2,16 +2,20 @@ import urllib.request, json, re  # Read url, decode json, regex
 from lxml import etree  # Using a custom XML library (Make sure you have installed lxml)
 import sys
 
-# NOTES: 
-# If set number contains a letter, this will break the program due to the numerical sort Eg. RR
-# Comment out the sort function if needed by the xml will be sorted by string
+# NOTES:
+# You need to install lxml for the XML generation to work
+# This generator will NOT count promos, Eg. PR pf3
+# Although any card with letters in their card number will break the program, so filter them out if possible Eg. CN 2f and 4f
+# Please add in any promos or lettered numbers card manually
+# For older problem cards with "not elements" as their req, you will need to manually add them Eg. PR 166, need add Not Loyalty
+# There's a bug with regex 5 in convertKeywordAndGametext function for certain sets
 
 # SETTINGS
-set = "LL"  # Enter set to convert (In uppercase)
-setName = "Leaders and Legends"
-setGUID = "e8928809-8c6a-40a7-a4f8-7c9718988fd4"
-gameVersion = "2.4.0.0"
-scriptVersion = "3.1"
+set = "FF"  # Enter set to convert (In uppercase)
+setName = "Friends Forever"
+setGUID = "12a9d6fe-0732-4013-b443-34faed34ddee"
+gameVersion = "2.4.0.0" # Current game version
+scriptVersion = "3.1" # Latest OCTGN Python API Version
 
 # List of keywords to be placed in the Keywords property in the XML
 keywordList = [
@@ -30,6 +34,7 @@ keywordList = [
     "Prismatic",
     "Pumped",
     "Random",
+    "Redeem",
     "Showy",
     "Starting Problem",
     "Stubborn",
@@ -127,18 +132,18 @@ def convertKeywordAndGametext(gametext):
             gametextModified = gametextModified.replace(keywordList[i] + ". ", "")
 
     # Check for color in gametext and make it to [element] Eg. Pink seashell token to [laughter] seashell token
-    if "Blue" in gametextModified:
-        gametextModified = gametextModified.replace("Blue", "[Loyalty]")
-    elif "Orange" in gametextModified:
-        gametextModified = gametextModified.replace("Orange", "[Honesty]")
-    elif "Pink" in gametextModified:
-        gametextModified = gametextModified.replace("Pink", "[Laughter]")
-    elif "Purple" in gametextModified:
-        gametextModified = gametextModified.replace("Purple", "[Magic]")
-    elif "White" in gametextModified:
-        gametextModified = gametextModified.replace("White", "[Generosity]")
-    elif "Yellow" in gametextModified:
-        gametextModified = gametextModified.replace("Yellow", "[Kindness]")
+    if re.search(r"\bBlue\b", gametextModified):
+        gametextModified = re.sub("Blue", "[Loyalty]", gametextModified)
+    if re.search(r"\bOrange\b", gametextModified):
+        gametextModified = re.sub("Orange", "[Honesty]", gametextModified)
+    if re.search(r"\bPink\b", gametextModified):
+        gametextModified = re.sub("Pink", "[Laughter]", gametextModified)
+    if re.search(r"\bPurple\b", gametextModified):
+        gametextModified = re.sub("Purple", "[Magic]", gametextModified)
+    if re.search(r"\bWhite\b", gametextModified):
+        gametextModified = re.sub("White", "[Generosity]", gametextModified)
+    if re.search(r"\bYellow\b", gametextModified):
+        gametextModified = re.sub("Yellow", "[Kindness]", gametextModified)
 
     # Check for <P>, [no text]. and replace them
     gametextModified = gametextModified.replace(" <P> ", "&#10;")
@@ -160,7 +165,7 @@ def convertEverythingElse(toConvert, listName):
     # Change null to empty string (Need to be placed at the start)
     if toConvertModified is None:
         toConvertModified = ""
-    
+
     if listName == "cardType" and "Mane" in toConvertModified:
         toConvertModified = "Mane Character"
         toConvertModifiedAlt = "Mane Character Boosted"
@@ -178,7 +183,7 @@ def convertEverythingElse(toConvert, listName):
         else:
             toConvertModified = toConvertModified[:1]
             toConvertModifiedAlt = toConvertModified
-    
+
     if listName == "playReqPwr" and "0" in toConvertModified:
         toConvertModified = ""
 
@@ -274,7 +279,9 @@ allList = [
 count = 0  # Used to check for any list that has nothing appended at the end of loop
 
 with urllib.request.urlopen(
-    "http://www.ferrictorus.com/mlpapi1/cards?query=set:" + set + "&oguids=true"
+    "http://www.ferrictorus.com/mlpapi1/cards?query=set:"
+    + set
+    + " Rarity:!Promo&oguids=true"
 ) as url:
     data = json.loads(url.read().decode())
 
@@ -283,7 +290,7 @@ with urllib.request.urlopen(
         print("No cards found, please check your settings!")
         sys.exit
 
-    # Sorts the returned JSON based on ascending card number (Note: if card number contains a letter, this will break the program Eg. RR)
+    # Sorts the returned JSON based on ascending card number (Note: the sort will break if it finds any card number with letters)
     sorted_data = dict(data)
     sorted_data["data"] = sorted(data["data"], key=lambda item: int(item["number"]))
 
@@ -388,7 +395,7 @@ with urllib.request.urlopen(
             if card["type"] == "Problem":
                 probPlayerElement1.append(convertedElement)
             else:
-                #Dilemmas needs a wild prob element
+                # Dilemmas needs a wild prob element
                 if card["traits"] == "Dilemma":
                     probPlayerElement1.append("Wild")
 
@@ -398,7 +405,7 @@ with urllib.request.urlopen(
                 else:
                     element.append(convertedElement)
 
-                #Check if card has any color req
+                # Check if card has any color req
                 if card["req"] != "0" and card["req"] is not None:
                     playReqElement.append(convertedElement)
 
@@ -429,7 +436,7 @@ for i in range(0, count):
         card = etree.SubElement(cards, "card", id=GUID[i], size="Problem", name=name[i])
     else:
         card = etree.SubElement(cards, "card", id=GUID[i], name=name[i])
-    
+
     # Rest of the properties
     etree.SubElement(card, "property", name="Number", value=setID[i])
     etree.SubElement(card, "property", name="Type", value=cardType[i])
@@ -476,7 +483,7 @@ for i in range(0, count):
     etree.SubElement(card, "property", name="Traits", value=traits[i])
     etree.SubElement(card, "property", name="Keywords", value=keywords[i])
     etree.SubElement(card, "property", name="Text", value=text[i])
-    etree.SubElement(card, "property", name="ProblemBonus", value=probBonus[i])
+    etree.SubElement(card, "property", name="Bonus", value=probBonus[i])
     etree.SubElement(card, "property", name="ProblemOpponentPower", value=probOppPwr[i])
     etree.SubElement(
         card, "property", name="ProblemPlayerElement1", value=probPlayerElement1[i]
@@ -500,7 +507,9 @@ for i in range(0, count):
 
     # Alternate side for Mane Characters
     if cardType[i] == "Mane Character":
-        alternate = etree.SubElement(card, "alternate", name=name[i], type="Mane Character Boosted")
+        alternate = etree.SubElement(
+            card, "alternate", name=name[i], type="Mane Character Boosted"
+        )
         etree.SubElement(alternate, "property", name="Number", value=setID[i])
         etree.SubElement(alternate, "property", name="Type", value=altCardType[i])
         etree.SubElement(alternate, "property", name="Element", value=element[i])
@@ -508,9 +517,14 @@ for i in range(0, count):
             alternate, "property", name="MultiPrimaryElement", value=multiPriElement[i]
         )
         etree.SubElement(
-            alternate, "property", name="MultiSecondaryElement", value=multiSecElement[i]
+            alternate,
+            "property",
+            name="MultiSecondaryElement",
+            value=multiSecElement[i],
         )
-        etree.SubElement(alternate, "property", name="TriPrimaryElement", value=triPriElement[i])
+        etree.SubElement(
+            alternate, "property", name="TriPrimaryElement", value=triPriElement[i]
+        )
         etree.SubElement(
             alternate, "property", name="TriSecondaryElement", value=triSecElement[i]
         )
@@ -518,7 +532,9 @@ for i in range(0, count):
         etree.SubElement(alternate, "property", name="Subname", value=subname[i])
         etree.SubElement(alternate, "property", name="Power", value=altPower[i])
         etree.SubElement(alternate, "property", name="Cost", value=cost[i])
-        etree.SubElement(alternate, "property", name="PlayRequiredPower", value=playReqPwr[i])
+        etree.SubElement(
+            alternate, "property", name="PlayRequiredPower", value=playReqPwr[i]
+        )
         etree.SubElement(
             alternate, "property", name="PlayRequiredElement", value=playReqElement[i]
         )
@@ -541,15 +557,23 @@ for i in range(0, count):
             value=triPlayReqElementPwr[i],
         )
         etree.SubElement(
-            alternate, "property", name="TertiaryPlayRequiredElement", value=triPlayReqElement[i]
+            alternate,
+            "property",
+            name="TertiaryPlayRequiredElement",
+            value=triPlayReqElement[i],
         )
         etree.SubElement(alternate, "property", name="Traits", value=traits[i])
         etree.SubElement(alternate, "property", name="Keywords", value=altKeywords[i])
         etree.SubElement(alternate, "property", name="Text", value=altText[i])
-        etree.SubElement(alternate, "property", name="ProblemBonus", value=probBonus[i])
-        etree.SubElement(alternate, "property", name="ProblemOpponentPower", value=probOppPwr[i])
+        etree.SubElement(alternate, "property", name="Bonus", value=probBonus[i])
         etree.SubElement(
-            alternate, "property", name="ProblemPlayerElement1", value=probPlayerElement1[i]
+            alternate, "property", name="ProblemOpponentPower", value=probOppPwr[i]
+        )
+        etree.SubElement(
+            alternate,
+            "property",
+            name="ProblemPlayerElement1",
+            value=probPlayerElement1[i],
         )
         etree.SubElement(
             alternate,
@@ -558,7 +582,10 @@ for i in range(0, count):
             value=probPlayerElementPwr1[i],
         )
         etree.SubElement(
-            alternate, "property", name="ProblemPlayerElement2", value=probPlayerElement2[i]
+            alternate,
+            "property",
+            name="ProblemPlayerElement2",
+            value=probPlayerElement2[i],
         )
         etree.SubElement(
             alternate,
